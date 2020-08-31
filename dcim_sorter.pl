@@ -8,10 +8,12 @@ use File::Path qw(make_path);
 use File::Copy;
 use Image::ExifTool qw(:Public);
 use DateTime;
+use Win32::DriveInfo;
 
 # moves images from media into date-sorted directories
 
 my $oldEnough = 365; # beyond this many days old, files can be deleted from source if they're present in destination
+my $minSpace = 1000; # MB less than this much space (in megabytes) on the source drive, you'll be asked if you want to delete some of the oldest images
 my $dated_filenames = 0; # put date and time in destination filenames?
 my @exts = ('jpg', 'jpeg', 'dng', 'cr2', 'cr3', 'png', 'nef'); # files with these exntensions will be copied
 my $destDir = 'C:\Users\zoggop\Pictures\eos350d'; # where to copy files into by-date directory structure
@@ -64,6 +66,8 @@ my $dupeCount = 0;
 my $copyCount = 0;
 
 my @safeOldImages;
+my %safeOldImagesYes;
+my %datesBySafeImageFilepaths;
 
 sub image_datetime {
 	my $filepath = $_[0];
@@ -127,7 +131,9 @@ sub process_file {
 			# print(" $days days old ");
 			if ($days > $oldEnough) {
 				push(@safeOldImages, $srcFile);
+				$safeOldImagesYes{$srcFile} = 1;
 			}
+			$datesBySafeImageFilepaths{$srcFile} = $srcDT;
 			$dupeCount++;
 		} else {
 			# if file isn't already in destination, create necessary directories and copy it there
@@ -159,16 +165,57 @@ sub process_file {
 
 find(\&process_file, ($srcDir));
 print("$fileCount images found in source, $dupeCount copies found in destination, $copyCount copied\n");
+
 my $safeOldCount = @safeOldImages;
+
+# if ($srcPath[0] ne $destPath[0]) {
+	# source is a different drive than destination
+	# my ($fs_type, $fs_desc, $used, $avail, $fused, $favail) = df $srcDir;
+	my (undef, undef, undef, undef, undef, $total, $free) = Win32::DriveInfo::DriveSpace($srcPath[0]);
+	my $totalMB = int($total / 1000000);
+	my $freeMB = int($free / 1000000);
+	print("$totalMB total\n$freeMB free\n");
+	# if ($freeMB < $minSpace) {
+		my $wantedMB = $minSpace - $freeMB;
+		print ("less than $minSpace MB free on source drive. would you like to delete the oldest safely copied images to free up $wantedMB MB? (y/N)\n");
+		my $yesDelete = <STDIN>;
+		chomp($yesDelete);
+		if (uc($yesDelete) eq 'Y') {
+			@safeFilepaths = sort { DateTime->compare_ignore_floating($datesBySafeImageFilepaths{$a}, $datesBySafeImageFilepaths{$b}) } keys(%datesBySafeImageFilepaths);
+			my $deletedMB = 0;
+			foreach my $fp (@safeFilepaths) {
+				if (%safeOldImagesYes{$fp} == 1) {
+					$safeOldCount = $safeOldCount - 1;
+					$safeOldImagesYes{$fp} = 0;
+				}
+				my $fpMB = -s $fp;
+				$fpMB = $fpMB / 1000000;
+				print("X $fp\n");
+				unlink $fp or warn "Could not unlink $fp: $!";	
+				$deletedMB = $deletedMB + $fpMB;
+				$freeMB = $freeMB + $fpMB;
+				if ($freeMB > $minSpace) {
+					last;
+				}
+			}
+			print("deleted $deletedMB MB of the oldest safely copied images. $freeMB MB now available on source drive.\n");
+		}
+	# }
+# }
+
+# my @allPosts = sort { $datenumbers{$b} <=> $datenumbers{$a} } keys(%datenumbers
+
 if ($safeOldCount > 0) {
 	print("\ndelete $safeOldCount safely copied images older than $oldEnough days from source? (y/N) ");
 	my $yesDelete = <STDIN>;
 	chomp($yesDelete);
 	if (uc($yesDelete) eq 'Y') {
 		foreach my $file (@safeOldImages) {
-			print("X $file\n");
+			if ($safeOldImagesYes{$file} == 1) {
+				print("X $file\n");
+				unlink $file or warn "Could not unlink $file: $!";
+			}
 		}
-		unlink(@safeOldImages);
 		print("$safeOldCount images deleted from source\n");
 	}
 }
