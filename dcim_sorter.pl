@@ -69,6 +69,10 @@ my @safeOldImageCount = 0;
 my %safeOldImagesExist;
 my %datesBySafeImageFilepaths;
 
+my $nowDT = DateTime->now();
+
+my $exifTool = new Image::ExifTool;
+
 sub image_datetime {
 	my $filepath = $_[0];
 	my $only_datetime = $_[1];
@@ -77,7 +81,6 @@ sub image_datetime {
 	}
 	# print("$filepath, $only_datetime\n");
 	my $year, $mon, $mday, $hour, $min, $sec;
-	my $exifTool = new Image::ExifTool;
 	$exifTool->ExtractInfo($filepath);
 	my $dt_string = $exifTool->GetValue('DateTimeOriginal');
 	if (length($dt_string) > 1) {
@@ -120,13 +123,12 @@ sub process_file {
 		$fileCount++;
 		my ($year, $mon, $mday, $hour, $min, $sec, $srcDT) = image_datetime($srcFile, 0);
 		my $destFile = "$destDir\\$year\\$year\-$mon\\$year-$mon-$mday\\";
-		if ($dated_filenames) {
+		if ($dated_filenames == 1) {
 			$destFile = $destFile . "$year-$mon-$mday-$hour\_$min\_$sec-";
 		}
 		$destFile = $destFile . "$file";
 		my $destDT = image_datetime($destFile, 1);
 		if (-e $destFile && -s $destFile == -s $srcFile && DateTime->compare($srcDT, $destDT) == 0) {
-			my $nowDT = DateTime->now();
 			my $days = $nowDT->delta_days($srcDT)->delta_days;
 			# print(" $days days old ");
 			if ($days > $oldEnough) {
