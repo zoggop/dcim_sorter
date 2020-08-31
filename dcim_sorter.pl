@@ -65,8 +65,8 @@ my $fileCount = 0;
 my $dupeCount = 0;
 my $copyCount = 0;
 
-my @safeOldImages;
-my %safeOldImagesYes;
+my @safeOldImageCount = 0;
+my %safeOldImagesExist;
 my %datesBySafeImageFilepaths;
 
 sub image_datetime {
@@ -130,8 +130,8 @@ sub process_file {
 			my $days = $nowDT->delta_days($srcDT)->delta_days;
 			# print(" $days days old ");
 			if ($days > $oldEnough) {
-				push(@safeOldImages, $srcFile);
-				$safeOldImagesYes{$srcFile} = 1;
+				$safeOldCount++;
+				$safeOldImagesExist{$srcFile} = 1;
 			}
 			$datesBySafeImageFilepaths{$srcFile} = $srcDT;
 			$dupeCount++;
@@ -166,16 +166,14 @@ sub process_file {
 find(\&process_file, ($srcDir));
 print("$fileCount images found in source, $dupeCount copies found in destination, $copyCount copied\n");
 
-my $safeOldCount = @safeOldImages;
-
-# if ($srcPath[0] ne $destPath[0]) {
+if ($srcPath[0] ne $destPath[0]) {
 	# source is a different drive than destination
 	# my ($fs_type, $fs_desc, $used, $avail, $fused, $favail) = df $srcDir;
 	my (undef, undef, undef, undef, undef, $total, $free) = Win32::DriveInfo::DriveSpace($srcPath[0]);
 	my $totalMB = int($total / 1000000);
 	my $freeMB = int($free / 1000000);
-	print("$totalMB total\n$freeMB free\n");
-	# if ($freeMB < $minSpace) {
+	if ($freeMB < $minSpace) {
+		print("$totalMB MB total\n$freeMB MB free\n");
 		my $wantedMB = $minSpace - $freeMB;
 		print ("less than $minSpace MB free on source drive. would you like to delete the oldest safely copied images to free up $wantedMB MB? (y/N)\n");
 		my $yesDelete = <STDIN>;
@@ -184,9 +182,9 @@ my $safeOldCount = @safeOldImages;
 			@safeFilepaths = sort { DateTime->compare_ignore_floating($datesBySafeImageFilepaths{$a}, $datesBySafeImageFilepaths{$b}) } keys(%datesBySafeImageFilepaths);
 			my $deletedMB = 0;
 			foreach my $fp (@safeFilepaths) {
-				if (%safeOldImagesYes{$fp} == 1) {
+				if (%safeOldImagesExist{$fp} == 1) {
 					$safeOldCount = $safeOldCount - 1;
-					$safeOldImagesYes{$fp} = 0;
+					$safeOldImagesExist{$fp} = 0;
 				}
 				my $fpMB = -s $fp;
 				$fpMB = $fpMB / 1000000;
@@ -200,8 +198,8 @@ my $safeOldCount = @safeOldImages;
 			}
 			print("deleted $deletedMB MB of the oldest safely copied images. $freeMB MB now available on source drive.\n");
 		}
-	# }
-# }
+	}
+}
 
 # my @allPosts = sort { $datenumbers{$b} <=> $datenumbers{$a} } keys(%datenumbers
 
@@ -210,8 +208,8 @@ if ($safeOldCount > 0) {
 	my $yesDelete = <STDIN>;
 	chomp($yesDelete);
 	if (uc($yesDelete) eq 'Y') {
-		foreach my $file (@safeOldImages) {
-			if ($safeOldImagesYes{$file} == 1) {
+		foreach my $file (keys %safeOldImagesExist) {
+			if ($safeOldImagesExist{$file} == 1) {
 				print("X $file\n");
 				unlink $file or warn "Could not unlink $file: $!";
 			}
