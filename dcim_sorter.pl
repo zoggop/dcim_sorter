@@ -18,6 +18,8 @@ my @exts = ('dng', 'cr2', 'cr3', 'nef', '3fr', 'arq', 'crw', 'cs1', 'czi', 'dcr'
 my @nonRawExts = ('jpg', 'jpeg', 'png', 'webp', 'heif', 'heic', 'avci', 'avif');
 my $destDir = 'C:\Users\zoggop\Raw'; # where to copy raw files into directory structure
 my $nonRawDestDir = 'C:\Users\zoggop\Pictures'; # where to copy non-raw images into directory structure
+my $darkFramesDir = 'C:\Users\zoggop\Raw\dark-frames'; # where dark-frames are stored
+my $flatFieldsDir = 'C:\Users\zoggop\Raw\flat-fields'; # where flat-fields are stored
 my $pathForm = '#Model#\%Y\%Y-%m'; # surround EXIF tags with #, and can use POSIX datetime place-holders
 
 my $srcDir = $ARGV[0];
@@ -161,8 +163,21 @@ sub process_file {
 			$destPath = "$destDir\\$destSubPath";
 		}
 		my $destFile = "$destPath\\$file";
-		my $destDT = image_datetime($destFile);
-		if (-e $destFile && -s $destFile == -s $srcFile && DateTime->compare($srcDT, $destDT) == 0) {
+		my $found = 0;
+		if (-e $destFile && -s $destFile == -s $srcFile && DateTime->compare($srcDT, image_datetime($destFile)) == 0) {
+			$found = 1;
+		} else {
+			my $darkFrameFile = "$darkFramesDir\\$file";
+			if (-e $darkFrameFile && -s $darkFrameFile == -s $srcFile && DateTime->compare($srcDT, image_datetime($darkFrameFile)) == 0) {
+				$found = 1;
+			} else {
+				my $flatFieldFile = "$flatFieldsDir\\$file";
+				if (-e $flatFieldFile && -s $flatFieldFile == -s $srcFile && DateTime->compare($srcDT, image_datetime($flatFieldFile)) == 0) {
+					$found = 1;
+				}
+			}
+		}
+		if ($found == 1) {
 			my $days = $nowDT->delta_days($srcDT)->delta_days;
 			# print(" $days days old ");
 			if ($days > $oldEnough) {
@@ -172,7 +187,7 @@ sub process_file {
 			$datesBySafeImageFilepaths{$srcFile} = $srcDT;
 			$dupeCount++;
 		} else {
-			# if file isn't already in destination, create necessary directories and copy it there
+			# if file isn't found, make necessary directories and copy it
 			$copyCount++;
 			print("$srcFile\n\-\> $destFile\n");
 			prep_path($destPath);
