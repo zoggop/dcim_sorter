@@ -14,9 +14,9 @@ use Win32::DriveInfo;
 
 my $oldEnough = 365; # beyond this many days old, files can be deleted from source if they're present in destination
 my $minSpace = 1000; # MB less than this much space (in megabytes) on the source drive, you'll be asked if you want to delete some of the oldest images
-my $dated_filenames = 0; # put date and time in destination filenames?
 my @exts = ('jpg', 'jpeg', 'dng', 'cr2', 'cr3', 'png', 'nef'); # files with these exntensions will be copied
-my $destDir = 'C:\Users\zoggop\Pictures\eos350d'; # where to copy files into by-date directory structure
+my $destDir = 'C:\Users\zoggop\DCIM'; # where to copy files into directory structure
+my $pathForm = '#Model#\%Y\%Y-%m'; # surround EXIF tags with #, and can use POSIX datetime place-holders
 
 my $srcDir = $ARGV[0];
 
@@ -114,6 +114,33 @@ sub image_datetime {
 	}
 }
 
+sub prep_path {
+	my $path = $_[0];
+	my @pathList = split(/\\/, $path);
+	my $curPath = "$pathList[0]";
+	for ($i = 1; $i <= $#pathList; $i++) {
+		my $dir = $pathList[$i];
+		$curPath = "$curPath\\$dir";
+		unless (-e $curPath) {
+			make_path($curPath);
+		}
+	}
+}
+
+sub parse_format_string {
+	my $format = $_[0];
+	my $dt = $_[1];
+	my $file = $_[2];
+	$exifTool->ExtractInfo($file);
+	my $formatted = $dt->strftime($format);
+	my @tags = $formatted =~ /\#(.*?)\#/g;
+	foreach my $tag (@tags) {
+		my $value = $exifTool->GetValue($tag);
+		$formatted =~ s/\#$tag\#/$value/g;
+	}
+	return $formatted;
+}
+
 sub process_file {
 	my $file = $_;
 	$srcFile = $File::Find::name;
@@ -122,11 +149,9 @@ sub process_file {
 	if ($validExts{uc($ext)} == 1) {
 		$fileCount++;
 		my ($year, $mon, $mday, $hour, $min, $sec, $srcDT) = image_datetime($srcFile, 0);
-		my $destFile = "$destDir\\$year\\$year\-$mon\\$year-$mon-$mday\\";
-		if ($dated_filenames == 1) {
-			$destFile = $destFile . "$year-$mon-$mday-$hour\_$min\_$sec-";
-		}
-		$destFile = $destFile . "$file";
+		my $destSubPath = parse_format_string($pathForm, $srcDT, $srcFile);
+		my $destPath = "$destDir\\$destSubPath";
+		my $destFile = "$destPath\\$file";
 		my $destDT = image_datetime($destFile, 1);
 		if (-e $destFile && -s $destFile == -s $srcFile && DateTime->compare($srcDT, $destDT) == 0) {
 			my $days = $nowDT->delta_days($srcDT)->delta_days;
@@ -142,15 +167,7 @@ sub process_file {
 			$copyCount++;
 			print("$file $year\/$mon\/$mday $hour\:$min\:$sec\n");
 			print("$srcFile\n\-\> $destFile\n");
-			unless (-e "$destDir\\$year") {
-				make_path("$destDir\\$year")
-			}
-			unless (-e "$destDir\\$year\\$year\-$mon") {
-				make_path("$destDir\\$year\\$year\-$mon")
-			}
-			unless (-e "$destDir\\$year\\$year\-$mon\\$year-$mon-$mday") {
-				make_path("$destDir\\$year\\$year\-$mon\\$year-$mon-$mday")
-			}
+			prep_path($destPath);
 			copy($srcFile, $destFile) or die "Copy failed: $!";
 		}
 		# copy the processing profile if present
