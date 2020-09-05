@@ -75,7 +75,6 @@ my $exifTool = new Image::ExifTool;
 
 sub image_datetime {
 	my $filepath = $_[0];
-	my $only_datetime = $_[1];
 	unless (-e $filepath) {
 		return;
 	}
@@ -107,11 +106,7 @@ sub image_datetime {
 	    hour       => $hour,
 	    minute     => $min,
 	    second     => $sec);
-	if ($only_datetime == 1) {
-		return $dt;
-	} else {
-		return $year, $mon, $mday, $hour, $min, $sec, $dt;
-	}
+	return $dt;
 }
 
 sub prep_path {
@@ -131,9 +126,9 @@ sub parse_format_string {
 	my $format = $_[0];
 	my $dt = $_[1];
 	my $file = $_[2];
-	$exifTool->ExtractInfo($file);
 	my $formatted = $dt->strftime($format);
 	my @tags = $formatted =~ /\#(.*?)\#/g;
+	$exifTool->ExtractInfo($file);
 	foreach my $tag (@tags) {
 		my $value = $exifTool->GetValue($tag);
 		$formatted =~ s/\#$tag\#/$value/g;
@@ -148,11 +143,11 @@ sub process_file {
 	my ($ext) = $file =~ /(\.[^.]+)$/;
 	if ($validExts{uc($ext)} == 1) {
 		$fileCount++;
-		my ($year, $mon, $mday, $hour, $min, $sec, $srcDT) = image_datetime($srcFile, 0);
+		my $srcDT = image_datetime($srcFile);
 		my $destSubPath = parse_format_string($pathForm, $srcDT, $srcFile);
 		my $destPath = "$destDir\\$destSubPath";
 		my $destFile = "$destPath\\$file";
-		my $destDT = image_datetime($destFile, 1);
+		my $destDT = image_datetime($destFile);
 		if (-e $destFile && -s $destFile == -s $srcFile && DateTime->compare($srcDT, $destDT) == 0) {
 			my $days = $nowDT->delta_days($srcDT)->delta_days;
 			# print(" $days days old ");
@@ -165,7 +160,6 @@ sub process_file {
 		} else {
 			# if file isn't already in destination, create necessary directories and copy it there
 			$copyCount++;
-			print("$file $year\/$mon\/$mday $hour\:$min\:$sec\n");
 			print("$srcFile\n\-\> $destFile\n");
 			prep_path($destPath);
 			copy($srcFile, $destFile) or die "Copy failed: $!";
