@@ -88,34 +88,27 @@ sub image_datetime {
 	unless (-e $filepath) {
 		return;
 	}
-	# print("$filepath, $only_datetime\n");
-	my $year, $mon, $mday, $hour, $min, $sec;
+	my $dt;
 	$exifTool->ExtractInfo($filepath);
 	my $dt_string = $exifTool->GetValue('DateTimeOriginal');
 	if (length($dt_string) > 1) {
 		# use exif datetime
 		# print("$dt_string\n");
-		@spaced = split(/ /, $dt_string);
-		($year, $mon, $mday) = split(/\:/, $spaced[0]);
-		($hour, $min, $sec) = split(/\:/, $spaced[1]);
-	}
-	else {
+		my @spaced = split(/ /, $dt_string);
+		my ($year, $mon, $mday) = split(/\:/, $spaced[0]);
+		my ($hour, $min, $sec) = split(/\:/, $spaced[1]);
+		$dt = DateTime->new(
+		    year       => $year,
+		    month      => $mon,
+		    day        => $mday,
+		    hour       => $hour,
+		    minute     => $min,
+		    second     => $sec);
+	} else {
 		# use modification datetime
-		my $datetime = stat($filepath)->mtime;
-		my $wday, $yday, $isdst;
-		($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($datetime);
-		$year = $year + 1900;
-		# $mon = sprintf "%02d", $mon;
-		# $mday = sprintf "%02d", $mday;
+		my $file_epoch = stat($filepath)->mtime;
+		$dt = DateTime->from_epoch( epoch => $file_epoch );
 	}
-	# print("$file $year\/$mon\/$mday $hour\:$min\:$sec\n");
-	my $dt = DateTime->new(
-	    year       => $year,
-	    month      => $mon,
-	    day        => $mday,
-	    hour       => $hour,
-	    minute     => $min,
-	    second     => $sec);
 	return $dt;
 }
 
@@ -168,7 +161,7 @@ sub process_file {
 			my $lookFile = "$dir\\$file";
 			if (-e $lookFile && -s $lookFile == -s $srcFile && DateTime->compare($srcDT, image_datetime($lookFile)) == 0) {
 				$found = 1;
-				# print("found in $lookFile\n");
+				print("found in $lookFile\n");
 				last;
 			}
 		}
