@@ -16,6 +16,7 @@ my $oldEnough = 365; # beyond this many days old, files can be deleted from sour
 my $minSpace = 1000; # MB less than this much space (in megabytes) on the source drive, you'll be asked if you want to delete some of the oldest images
 my @exts = ('dng', 'cr2', 'cr3', 'nef', '3fr', 'arq', 'crw', 'cs1', 'czi', 'dcr', 'erf', 'gpr', 'iiq', 'k25', 'kdc', 'mef', 'mrw', 'nrw', 'orf', 'pef', 'r3d', 'raw', 'rw2', 'rwl', 'rwz', 'sr2', 'srf', 'srw', 'x3f'); # files with these exntensions will be copied to raw destination
 my @nonRawExts = ('jpg', 'jpeg', 'png', 'webp', 'heif', 'heic', 'avci', 'avif');
+my @sidecarExts = ('pp3', 'pp2', 'xmp');
 my $destDir = 'C:\Users\zoggop\Raw'; # where to copy raw files into directory structure
 my $nonRawDestDir = 'C:\Users\zoggop\Pictures'; # where to copy non-raw images into directory structure
 my $pathForm = '#Model#\%Y\%Y-%m'; # surround EXIF tags with #, and can use POSIX datetime place-holder
@@ -144,6 +145,7 @@ sub process_file {
 	my $srcFile = $File::Find::name;
 	$srcFile =~ s/\//\\/g;
 	my ($ext) = $file =~ /(\.[^.]+)$/;
+	my ($pathAndName) = $srcFile =~ /.*(?=\.)/;
 	if ($validExts{uc($ext)} == 1 || $nonRawValidExts{uc($ext)} == 1) {
 		$fileCount++;
 		my $srcDT = image_datetime($srcFile);
@@ -161,7 +163,7 @@ sub process_file {
 			my $lookFile = "$dir\\$file";
 			if (-e $lookFile && -s $lookFile == -s $srcFile && DateTime->compare($srcDT, image_datetime($lookFile)) == 0) {
 				$found = 1;
-				print("found in $lookFile\n");
+				# print("found in $lookFile\n");
 				last;
 			}
 		}
@@ -181,13 +183,24 @@ sub process_file {
 			prep_path($destPath);
 			copy($srcFile, $destFile) or die "Copy failed: $!";
 		}
-		# copy the processing profile if present
-		$pp3File = "$srcFile.pp3";
-		if (-e $pp3File) {
-			$destPp3File = "$destFile.pp3";
-			unless (-e $destPp3File) {
-				print("$pp3File\n\-\> $destPp3File\n");
-				copy($pp3File, $destPp3File) or die "Copy failed: $!";
+		# copy sidecar files if present
+		foreach my $scExt (@sidecarExts) {
+			my $sidecarFile1 = "$srcFile.$scExt";
+			my $sidecarFile2 = "$pathAndName.$scExt";
+			if (-e $sidecarFile1) {
+				my $destSidecarFile = "$destFile.$scExt";
+				unless (-e $destSidecarFile) {
+					print("$sidecarFile1\n\-\> $destSidecarFile\n");
+					copy($sidecarFile1, $destSidecarFile) or die "Copy failed: $!";
+				}
+			}
+			if (-e $sidecarFile2) {
+				my ($destPathAndName) = $destFile =~ /.*(?=\.)/;
+				my $destSidecarFile = "$destPathAndName.$scExt";
+				unless (-e $destSidecarFile) {
+					print("$sidecarFile2\n\-\> $destSidecarFile\n");
+					copy($sidecarFile2, $destSidecarFile) or die "Copy failed: $!";
+				}
 			}
 		}
 	}
