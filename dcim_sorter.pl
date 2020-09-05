@@ -14,20 +14,24 @@ use Win32::DriveInfo;
 
 my $oldEnough = 365; # beyond this many days old, files can be deleted from source if they're present in destination
 my $minSpace = 1000; # MB less than this much space (in megabytes) on the source drive, you'll be asked if you want to delete some of the oldest images
-my @exts = ('jpg', 'jpeg', 'dng', 'cr2', 'cr3', 'png', 'nef'); # files with these exntensions will be copied
-my $destDir = 'C:\Users\zoggop\DCIM'; # where to copy files into directory structure
+my @exts = ('dng', 'cr2', 'cr3', 'nef', '3fr', 'arq', 'crw', 'cs1', 'czi', 'dcr', 'erf', 'gpr', 'iiq', 'k25', 'kdc', 'mef', 'mrw', 'nrw', 'orf', 'pef', 'r3d', 'raw', 'rw2', 'rwl', 'rwz', 'sr2', 'srf', 'srw', 'x3f'); # files with these exntensions will be copied to raw destination
+my @nonRawExts = ('jpg', 'jpeg', 'png', 'webp', 'heif', 'heic', 'avci', 'avif');
+my $destDir = 'C:\Users\zoggop\Raw'; # where to copy raw files into directory structure
+my $nonRawDestDir = 'C:\Users\zoggop\Pictures'; # where to copy non-raw images into directory structure
 my $pathForm = '#Model#\%Y\%Y-%m'; # surround EXIF tags with #, and can use POSIX datetime place-holders
 
 my $srcDir = $ARGV[0];
 
 my @destPath = split(/\\/, $destDir);
+my @nonRawDestPath = split(/\\/, $nonRawDestDir);
 my @srcPath = split(/\\/, $srcDir);
 
 my $srcContainsDest = 1;
 for ($i = 0; $i <= $#srcPath; $i++) {
 	my $ddir = $destPath[$i];
+	my $nrddir = $nonRawDestPath[$i];
 	my $sdir = $srcPath[$i];
-	unless ($ddir eq $sdir) {
+	unless ($ddir eq $sdir || $nrddir eq $sdir) {
 		$srcContainsDest = 0;
 		last;
 	}
@@ -35,8 +39,9 @@ for ($i = 0; $i <= $#srcPath; $i++) {
 my $destContainsSrc = 1;
 for ($i = 0; $i <= $#destPath; $i++) {
 	my $ddir = $destPath[$i];
+	my $nrddir = $nonRawDestPath[$i];
 	my $sdir = $srcPath[$i];
-	unless ($ddir eq $sdir) {
+	unless ($ddir eq $sdir || $nrddir eq $sdir) {
 		$destContainsSrc = 0;
 		last;
 	}
@@ -49,16 +54,20 @@ if ($destContainsSrc == 1 || $srcContainsDest == 1) {
 	} elsif ($destContainsSrc == 1) {
 		print("destination directory contains or is the same as source directory\n");
 	}
-	print("source: \t$srcDir\ndestination: \t$destDir\n");
+	print("source: \t$srcDir\ndestination: \t$destDir\nnon-raw destination: \t$nonRawDestDir\n");
 	print("press ENTER to exit");
 	<STDIN>;
 	exit;
 }
 
-# create extension hash
+# create extension hashes
 my %validExts;
 foreach my $ext (@exts) {
 	$validExts{uc("\.$ext")} = 1;
+}
+my %nonRawValidExts;
+foreach my $ext (@nonRawExts) {
+	$nonRawValidExts{uc("\.$ext")} = 1;
 }
 
 my $fileCount = 0;
@@ -138,14 +147,19 @@ sub parse_format_string {
 
 sub process_file {
 	my $file = $_;
-	$srcFile = $File::Find::name;
+	my $srcFile = $File::Find::name;
 	$srcFile =~ s/\//\\/g;
 	my ($ext) = $file =~ /(\.[^.]+)$/;
-	if ($validExts{uc($ext)} == 1) {
+	if ($validExts{uc($ext)} == 1 || $nonRawValidExts{uc($ext)} == 1) {
 		$fileCount++;
 		my $srcDT = image_datetime($srcFile);
 		my $destSubPath = parse_format_string($pathForm, $srcDT, $srcFile);
-		my $destPath = "$destDir\\$destSubPath";
+		my $destPath;
+		if ($nonRawValidExts{uc($ext)} == 1) {
+			$destPath = "$nonRawDestDir\\$destSubPath";
+		} else {
+			$destPath = "$destDir\\$destSubPath";
+		}
 		my $destFile = "$destPath\\$file";
 		my $destDT = image_datetime($destFile);
 		if (-e $destFile && -s $destFile == -s $srcFile && DateTime->compare($srcDT, $destDT) == 0) {
@@ -176,6 +190,7 @@ sub process_file {
 	}
 }
 
+print("$srcDir\n");
 find(\&process_file, ($srcDir));
 print("$fileCount images found in source, $dupeCount copies found in destination, $copyCount copied\n");
 
@@ -186,9 +201,9 @@ if ($srcPath[0] ne $destPath[0]) {
 	my $totalMB = int($total / 1000000);
 	my $freeMB = int($free / 1000000);
 	if ($freeMB < $minSpace) {
-		print("$totalMB MB total\n$freeMB MB free\n");
+		print("$totalMB MB total\n$freeMB MB free on source drive $srcPath[0]\n");
 		my $wantedMB = $minSpace - $freeMB;
-		print ("less than $minSpace MB free on source drive. would you like to delete the oldest safely copied images to free up $wantedMB MB? (y/N)\n");
+		print ("less than $minSpace MB free on source drive $srcPath[0]. would you like to delete the oldest safely copied images to free up $wantedMB MB? (y/N)\n");
 		my $yesDelete = <STDIN>;
 		chomp($yesDelete);
 		if (uc($yesDelete) eq 'Y') {
