@@ -18,9 +18,8 @@ my @exts = ('dng', 'cr2', 'cr3', 'nef', '3fr', 'arq', 'crw', 'cs1', 'czi', 'dcr'
 my @nonRawExts = ('jpg', 'jpeg', 'png', 'webp', 'heif', 'heic', 'avci', 'avif');
 my $destDir = 'C:\Users\zoggop\Raw'; # where to copy raw files into directory structure
 my $nonRawDestDir = 'C:\Users\zoggop\Pictures'; # where to copy non-raw images into directory structure
-my $darkFramesDir = 'C:\Users\zoggop\Raw\dark-frames'; # where dark-frames are stored
-my $flatFieldsDir = 'C:\Users\zoggop\Raw\flat-fields'; # where flat-fields are stored
-my $pathForm = '#Model#\%Y\%Y-%m'; # surround EXIF tags with #, and can use POSIX datetime place-holders
+my $pathForm = '#Model#\%Y\%Y-%m'; # surround EXIF tags with #, and can use POSIX datetime place-holder
+my @otherDirs = ('C:\Users\zoggop\Raw\dark-frames', 'C:\Users\zoggop\Raw\flat-fields'); # directories to look for copies other than the destination directories
 
 my $srcDir = $ARGV[0];
 
@@ -106,8 +105,8 @@ sub image_datetime {
 		my $wday, $yday, $isdst;
 		($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($datetime);
 		$year = $year + 1900;
-		$mon = sprintf "%02d", $mon;
-		$mday = sprintf "%02d", $mday;
+		# $mon = sprintf "%02d", $mon;
+		# $mday = sprintf "%02d", $mday;
 	}
 	# print("$file $year\/$mon\/$mday $hour\:$min\:$sec\n");
 	my $dt = DateTime->new(
@@ -164,17 +163,13 @@ sub process_file {
 		}
 		my $destFile = "$destPath\\$file";
 		my $found = 0;
-		if (-e $destFile && -s $destFile == -s $srcFile && DateTime->compare($srcDT, image_datetime($destFile)) == 0) {
-			$found = 1;
-		} else {
-			my $darkFrameFile = "$darkFramesDir\\$file";
-			if (-e $darkFrameFile && -s $darkFrameFile == -s $srcFile && DateTime->compare($srcDT, image_datetime($darkFrameFile)) == 0) {
+		my @dirs = ($destPath, @otherDirs);
+		foreach my $dir (@dirs) {
+			my $lookFile = "$dir\\$file";
+			if (-e $lookFile && -s $lookFile == -s $srcFile && DateTime->compare($srcDT, image_datetime($lookFile)) == 0) {
 				$found = 1;
-			} else {
-				my $flatFieldFile = "$flatFieldsDir\\$file";
-				if (-e $flatFieldFile && -s $flatFieldFile == -s $srcFile && DateTime->compare($srcDT, image_datetime($flatFieldFile)) == 0) {
-					$found = 1;
-				}
+				# print("found in $lookFile\n");
+				last;
 			}
 		}
 		if ($found == 1) {
@@ -209,7 +204,7 @@ print("$srcDir\n");
 find(\&process_file, ($srcDir));
 print("$fileCount images found in source, $dupeCount copies found in destination, $copyCount copied\n");
 
-if ($srcPath[0] ne $destPath[0]) {
+if ($srcPath[0] ne $destPath[0] && $fileCount > 0) {
 	# source is a different drive than destination
 	# my ($fs_type, $fs_desc, $used, $avail, $fused, $favail) = df $srcDir;
 	my (undef, undef, undef, undef, undef, $total, $free) = Win32::DriveInfo::DriveSpace($srcPath[0]);
@@ -239,7 +234,7 @@ if ($srcPath[0] ne $destPath[0]) {
 					last;
 				}
 			}
-			print("deleted $deletedMB MB of the oldest safely copied images. $freeMB MB now available on source drive.\n");
+			print("deleted $deletedMB MB of the oldest safely copied images. $freeMB MB now available on source drive $srcPath[0]\n");
 		}
 	}
 }
