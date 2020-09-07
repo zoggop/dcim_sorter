@@ -9,6 +9,7 @@ use File::Copy;
 use Image::ExifTool qw(:Public);
 use DateTime;
 use Win32::DriveInfo;
+use Term::ReadKey;
 
 # moves images from media into date-sorted directories
 
@@ -16,13 +17,15 @@ my $oldEnough = 365; # beyond this many days old, files can be deleted from sour
 my $minSpace = 1000; # MB less than this much space (in megabytes) on the source drive, you'll be asked if you want to delete some of the oldest images
 my @exts = ('dng', 'cr2', 'cr3', 'nef', '3fr', 'arq', 'crw', 'cs1', 'czi', 'dcr', 'erf', 'gpr', 'iiq', 'k25', 'kdc', 'mef', 'mrw', 'nrw', 'orf', 'pef', 'r3d', 'raw', 'rw2', 'rwl', 'rwz', 'sr2', 'srf', 'srw', 'x3f'); # files with these exntensions will be copied to raw destination
 my @nonRawExts = ('jpg', 'jpeg', 'png', 'webp', 'heif', 'heic', 'avci', 'avif');
-my @sidecarExts = ('pp3', 'pp2', 'xmp');
+my @sidecarExts = ('pp3', 'pp2', 'arp', 'xmp');
 my $destDir = 'C:\Users\zoggop\Raw'; # where to copy raw files into directory structure
 my $nonRawDestDir = 'C:\Users\zoggop\Pictures'; # where to copy non-raw images into directory structure
 my $pathForm = '#Model#\%Y\%Y-%m'; # surround EXIF tags with #, and can use POSIX datetime place-holder
 my @otherDirs = ('C:\Users\zoggop\Raw\dark-frames', 'C:\Users\zoggop\Raw\flat-fields'); # directories to look for copies other than the destination directories
 
 my $srcDir = $ARGV[0];
+
+my ($wchar, undef, undef, undef) = GetTerminalSize();
 
 my @destPath = split(/\\/, $destDir);
 my @nonRawDestPath = split(/\\/, $nonRawDestDir);
@@ -81,8 +84,12 @@ my %safeOldImagesExist;
 my %datesBySafeImageFilepaths;
 
 my $nowDT = DateTime->now();
+my $oldestDT;
+my $newestDT;
 
 my $exifTool = new Image::ExifTool;
+
+my $dotStr = "";
 
 sub image_datetime {
 	my $filepath = $_[0];
@@ -149,6 +156,14 @@ sub process_file {
 	if ($validExts{uc($ext)} == 1 || $nonRawValidExts{uc($ext)} == 1) {
 		$fileCount++;
 		my $srcDT = image_datetime($srcFile);
+		if ($fileCount == 1) { $oldestDT = $srcDT; }
+		if ($fileCount == 1) { $newestDT = $srcDT; }
+		if (DateTime->compare($srcDT, $oldestDT) == -1) {
+			$oldestDT = $srcDT;
+		}
+		if (DateTime->compare($srcDT, $newestDT) == 1) {
+			$newestDT = $srcDT;
+		}
 		my $destSubPath = parse_format_string($pathForm, $srcDT, $srcFile);
 		my $destPath;
 		if ($nonRawValidExts{uc($ext)} == 1) {
@@ -176,9 +191,18 @@ sub process_file {
 			}
 			$datesBySafeImageFilepaths{$srcFile} = $srcDT;
 			$dupeCount++;
+			if ($dotStr ne "") {
+				if (length($dotStr) == $wchar) {
+					$dotStr = "";
+				}
+				print("\033[F");
+			}
+			$dotStr = "$dotStr.";
+			print("$dotStr\n");
 		} else {
 			# if file isn't found, make necessary directories and copy it
 			$copyCount++;
+			if ($dotStr ne "") { print("\n"); $dotStr = ""; }
 			print("$srcFile\n\-\> $destFile\n");
 			prep_path($destPath);
 			copy($srcFile, $destFile) or die "Copy failed: $!";
@@ -190,6 +214,7 @@ sub process_file {
 			if (-e $sidecarFile1) {
 				my $destSidecarFile = "$destFile.$scExt";
 				unless (-e $destSidecarFile) {
+					if ($dotStr ne "") { print("\n"); $dotStr = ""; }
 					print("$sidecarFile1\n\-\> $destSidecarFile\n");
 					copy($sidecarFile1, $destSidecarFile) or die "Copy failed: $!";
 				}
@@ -198,6 +223,7 @@ sub process_file {
 				my ($destPathAndName) = $destFile =~ /.*(?=\.)/;
 				my $destSidecarFile = "$destPathAndName.$scExt";
 				unless (-e $destSidecarFile) {
+					if ($dotStr ne "") { print("\n"); $dotStr = ""; }
 					print("$sidecarFile2\n\-\> $destSidecarFile\n");
 					copy($sidecarFile2, $destSidecarFile) or die "Copy failed: $!";
 				}
@@ -209,6 +235,11 @@ sub process_file {
 print("$srcDir\n");
 find(\&process_file, ($srcDir));
 print("$fileCount images found in source, $dupeCount copies found in destination, $copyCount copied\n");
+if ($fileCount > 0) {
+	my $oldestStrf = $oldestDT->strftime('%F %H:%M');
+	my $newestStrf = $newestDT->strftime('%F %H:%M');
+	print("images found span from $oldestStrf to $newestStrf\n");
+}
 
 if ($srcPath[0] ne $destPath[0] && $fileCount > 0) {
 	# source is a different drive than destination
