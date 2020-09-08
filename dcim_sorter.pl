@@ -13,8 +13,8 @@ use Term::ReadKey;
 
 # moves images from media into date-sorted directories
 
-my $oldEnough = 365; # beyond this many days old, files can be deleted from source if they're present in destination
-my $minSpace = 1000; # MB less than this much space (in megabytes) on the source drive, you'll be asked if you want to delete some of the oldest images
+my $oldEnough = 90; # beyond this many days old, files can be deleted from source if they're present in destination
+my $minSpace = 2000; # MB less than this much space (in megabytes) on the source drive, you'll be asked if you want to delete some of the oldest images
 my @exts = ('dng', 'cr2', 'cr3', 'nef', '3fr', 'arq', 'crw', 'cs1', 'czi', 'dcr', 'erf', 'gpr', 'iiq', 'k25', 'kdc', 'mef', 'mrw', 'nrw', 'orf', 'pef', 'r3d', 'raw', 'rw2', 'rwl', 'rwz', 'sr2', 'srf', 'srw', 'x3f'); # files with these exntensions will be copied to raw destination
 my @nonRawExts = ('jpg', 'jpeg', 'png', 'webp', 'heif', 'heic', 'avci', 'avif');
 my @sidecarExts = ('pp3', 'pp2', 'arp', 'xmp');
@@ -82,6 +82,8 @@ my $copyCount = 0;
 my @safeOldImageCount = 0;
 my %safeOldImagesExist;
 my %datesBySafeImageFilepaths;
+my %datesByCopiedFiles;
+my %sourcesByCopiedFiles;
 
 my $nowDT = DateTime->now();
 my $oldestDT;
@@ -206,26 +208,22 @@ sub process_file {
 			print("$srcFile\n\-\> $destFile\n");
 			prep_path($destPath);
 			copy($srcFile, $destFile) or die "Copy failed: $!";
+			$datesByCopiedFiles[$destFile] = $srcDT;
+			$sourcesByCopiedFiles[$destFile] = $srcFile;
 		}
 		# copy sidecar files if present
 		foreach my $scExt (@sidecarExts) {
-			my $sidecarFile1 = "$srcFile.$scExt";
-			my $sidecarFile2 = "$pathAndName.$scExt";
-			if (-e $sidecarFile1) {
-				my $destSidecarFile = "$destFile.$scExt";
-				unless (-e $destSidecarFile) {
-					if ($dotStr ne "") { print("\n"); $dotStr = ""; }
-					print("$sidecarFile1\n\-\> $destSidecarFile\n");
-					copy($sidecarFile1, $destSidecarFile) or die "Copy failed: $!";
-				}
-			}
-			if (-e $sidecarFile2) {
-				my ($destPathAndName) = $destFile =~ /.*(?=\.)/;
-				my $destSidecarFile = "$destPathAndName.$scExt";
-				unless (-e $destSidecarFile) {
-					if ($dotStr ne "") { print("\n"); $dotStr = ""; }
-					print("$sidecarFile2\n\-\> $destSidecarFile\n");
-					copy($sidecarFile2, $destSidecarFile) or die "Copy failed: $!";
+			my @sidecarFiles = ("$srcFile.$scExt", "$pathAndName.$scExt");
+			my @destSidecarFiles = ("$destFile.$scExt", "$destPathAndName.$scExt");
+			for ($i = 0; $i <= $#sidecarFiles; $i++) {
+				my $scf = $sidecarFiles[$i];
+				my $dscf = $destSidecarFiles[$i];
+				if (-e $scf) {
+					unless (-e $dscf) {
+						if ($dotStr ne "") { print("\n"); $dotStr = ""; }
+						print("$scf\n\-\> $dscf\n");
+						copy($scf, $dscf) or warn "Copy failed: $!";
+					}
 				}
 			}
 		}
@@ -233,12 +231,29 @@ sub process_file {
 }
 
 print("$srcDir\n");
+
 find(\&process_file, ($srcDir));
+
 print("$fileCount images found in source, $dupeCount copies found in destination, $copyCount copied\n");
 if ($fileCount > 0) {
 	my $oldestStrf = $oldestDT->strftime('%F %H:%M');
 	my $newestStrf = $newestDT->strftime('%F %H:%M');
 	print("images found span from $oldestStrf to $newestStrf\n");
+}
+
+# check copied files and add to safe to delete list if okay
+foreach my $destFile (keys %sourcesByCopiedFiles) {
+	my $srcFile = $sourcesByCopiedFiles[$destFile];
+	my $srcDT = $datesByCopiedFiles[$destFile];
+	if (-e $destFile && -s $srcFile == -s $destFile && DateTime->compare($srcDT, image_datetime($destFile)) == 0) {
+		my $days = $nowDT->delta_days($srcDT)->delta_days;
+		# print(" $days days old ");
+		if ($days > $oldEnough) {
+			$safeOldCount++;
+			$safeOldImagesExist{$srcFile} = 1;
+		}
+		$datesBySafeImageFilepaths[$srcFile] = $srcDT;
+	}
 }
 
 if ($srcPath[0] ne $destPath[0] && $fileCount > 0) {
