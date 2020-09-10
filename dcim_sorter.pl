@@ -6,6 +6,7 @@ use File::Find;
 use File::stat;
 use File::Path qw(make_path);
 use File::Copy;
+use File::Spec::Win32;
 use Image::ExifTool qw(:Public);
 use DateTime;
 use Win32::DriveInfo;
@@ -84,6 +85,7 @@ my %safeOldImagesExist;
 my %datesBySafeImageFilepaths;
 my %datesByCopiedFiles;
 my %sourcesByCopiedFiles;
+my %potentiallyEmptyPathYes;
 
 my $nowDT = DateTime->now();
 my $oldestDT;
@@ -92,6 +94,12 @@ my $newestDT;
 my $exifTool = new Image::ExifTool;
 
 my $dotStr = "";
+
+sub is_folder_empty {
+	my $dirname = shift;
+	opendir(my $dh, $dirname) or die "Not a directory";
+	return scalar(grep { $_ ne "." && $_ ne ".." } readdir($dh)) == 0;
+}
 
 sub image_datetime {
 	my $filepath = $_[0];
@@ -151,7 +159,8 @@ sub parse_format_string {
 
 sub unlink_sidecars {
 	my $file = $_[0];
-	my ($pathAndName) = $file =~ /.*(?=\.)/;
+	my ($pathAndName) = $file =~ /.*(?=\.)/g;
+	# print("$pathAndName\n");
 	foreach my $scExt (@sidecarExts) {
 		my @sidecarFiles = ("$file.$scExt", "$pathAndName.$scExt");
 		for ($i = 0; $i <= $#sidecarFiles; $i++) {
@@ -164,12 +173,22 @@ sub unlink_sidecars {
 	}
 }
 
+sub unlink_image {
+	my $file = $_[0];
+	print("X $file\n");
+	unlink $file or warn "Could not unlink $file: $!";
+	unlink_sidecars($file);
+	my ($path) = $file =~ /.*(?=\\)/g;
+	# print("$path\n");
+	$potentiallyEmptyPathYes{$path} = 1;
+}
+
 sub process_file {
 	my $file = $_;
 	my $srcFile = $File::Find::name;
 	$srcFile =~ s/\//\\/g;
 	my ($ext) = $file =~ /(\.[^.]+)$/;
-	my ($pathAndName) = $srcFile =~ /.*(?=\.)/;
+	my ($pathAndName) = $srcFile =~ /.*(?=\.)/g;
 	if ($validExts{uc($ext)} == 1 || $nonRawValidExts{uc($ext)} == 1) {
 		$fileCount++;
 		my $srcDT = image_datetime($srcFile);
@@ -292,9 +311,7 @@ if ($srcPath[0] ne $destPath[0] && $fileCount > 0) {
 				}
 				my $fpMB = -s $fp;
 				$fpMB = $fpMB / 1000000;
-				print("X $fp\n");
-				unlink $fp or warn "Could not unlink $fp: $!";	
-				unlink_sidecars($fp);
+				unlink_image($fp);
 				$deletedMB = $deletedMB + $fpMB;
 				$freeMB = $freeMB + $fpMB;
 				if ($freeMB > $minSpace) {
@@ -313,12 +330,19 @@ if ($safeOldCount > 0) {
 	if (uc($yesDelete) eq 'Y') {
 		foreach my $file (keys %safeOldImagesExist) {
 			if ($safeOldImagesExist{$file} == 1) {
-				print("X $file\n");
-				unlink $file or warn "Could not unlink $file: $!";
-				unlink_sidecars($file);
+				unlink_image($file);
 			}
 		}
 		print("$safeOldCount images deleted from source\n");
+	}
+}
+
+foreach my $path (keys %potentiallyEmptyPathYes) {
+	# print("$path\n");
+	if (rmdir($path)) {
+		print("X $path\n");
+	} else { 
+		warn "Could not rmdir $path $!";
 	}
 }
 
