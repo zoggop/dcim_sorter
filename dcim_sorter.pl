@@ -204,8 +204,8 @@ sub process_file {
 		} else {
 			# if file isn't found, make necessary directories and copy it
 			$copyCount++;
-			if ($dotStr ne "") { print("\n"); $dotStr = ""; }
 			print("$srcFile\n\-\> $destFile\n");
+			$dotStr = "";
 			prep_path($destPath);
 			copy($srcFile, $destFile) or die "Copy failed: $!";
 			$datesByCopiedFiles[$destFile] = $srcDT;
@@ -220,8 +220,8 @@ sub process_file {
 				my $dscf = $destSidecarFiles[$i];
 				if (-e $scf) {
 					unless (-e $dscf) {
-						if ($dotStr ne "") { print("\n"); $dotStr = ""; }
 						print("$scf\n\-\> $dscf\n");
+						$dotStr = "";
 						copy($scf, $dscf) or warn "Copy failed: $!";
 					}
 				}
@@ -258,7 +258,6 @@ foreach my $destFile (keys %sourcesByCopiedFiles) {
 
 if ($srcPath[0] ne $destPath[0] && $fileCount > 0) {
 	# source is a different drive than destination
-	# my ($fs_type, $fs_desc, $used, $avail, $fused, $favail) = df $srcDir;
 	my (undef, undef, undef, undef, undef, $total, $free) = Win32::DriveInfo::DriveSpace($srcPath[0]);
 	my $totalMB = int($total / 1000000);
 	my $freeMB = int($free / 1000000);
@@ -291,8 +290,6 @@ if ($srcPath[0] ne $destPath[0] && $fileCount > 0) {
 	}
 }
 
-# my @allPosts = sort { $datenumbers{$b} <=> $datenumbers{$a} } keys(%datenumbers
-
 if ($safeOldCount > 0) {
 	print("\ndelete $safeOldCount safely copied images older than $oldEnough days from source? (y/N) ");
 	my $yesDelete = <STDIN>;
@@ -307,5 +304,6 @@ if ($safeOldCount > 0) {
 		print("$safeOldCount images deleted from source\n");
 	}
 }
+
 print("press ENTER to exit");
 <STDIN>;
