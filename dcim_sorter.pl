@@ -11,10 +11,10 @@ use DateTime;
 use Win32::DriveInfo;
 use Term::ReadKey;
 
-# moves images from media into date-sorted directories
+# moves images from media into EXIF and date-sorted directories
 
-my $oldEnough = 90; # beyond this many days old, files can be deleted from source if they're present in destination
-my $minSpace = 2000; # MB less than this much space (in megabytes) on the source drive, you'll be asked if you want to delete some of the oldest images
+my $oldEnough = 30; # beyond this many days old, files can be deleted from source if they're present in destination
+my $minSpace = 1000; # MB less than this much space (in megabytes) on the source drive, you'll be asked if you want to delete some of the oldest images
 my @exts = ('dng', 'cr2', 'cr3', 'nef', '3fr', 'arq', 'crw', 'cs1', 'czi', 'dcr', 'erf', 'gpr', 'iiq', 'k25', 'kdc', 'mef', 'mrw', 'nrw', 'orf', 'pef', 'r3d', 'raw', 'rw2', 'rwl', 'rwz', 'sr2', 'srf', 'srw', 'x3f'); # files with these exntensions will be copied to raw destination
 my @nonRawExts = ('jpg', 'jpeg', 'png', 'webp', 'heif', 'heic', 'avci', 'avif');
 my @sidecarExts = ('pp3', 'pp2', 'arp', 'xmp');
@@ -149,6 +149,21 @@ sub parse_format_string {
 	return $formatted;
 }
 
+sub unlink_sidecars {
+	my $file = $_[0];
+	my ($pathAndName) = $file =~ /.*(?=\.)/;
+	foreach my $scExt (@sidecarExts) {
+		my @sidecarFiles = ("$file.$scExt", "$pathAndName.$scExt");
+		for ($i = 0; $i <= $#sidecarFiles; $i++) {
+			my $scf = $sidecarFiles[$i];
+			if (-e $scf) {
+				print("X $scf\n");
+				unlink($scf) or warn "Could not unlink $scf: $!";
+			}
+		}
+	}
+}
+
 sub process_file {
 	my $file = $_;
 	my $srcFile = $File::Find::name;
@@ -279,6 +294,7 @@ if ($srcPath[0] ne $destPath[0] && $fileCount > 0) {
 				$fpMB = $fpMB / 1000000;
 				print("X $fp\n");
 				unlink $fp or warn "Could not unlink $fp: $!";	
+				unlink_sidecars($fp);
 				$deletedMB = $deletedMB + $fpMB;
 				$freeMB = $freeMB + $fpMB;
 				if ($freeMB > $minSpace) {
@@ -299,6 +315,7 @@ if ($safeOldCount > 0) {
 			if ($safeOldImagesExist{$file} == 1) {
 				print("X $file\n");
 				unlink $file or warn "Could not unlink $file: $!";
+				unlink_sidecars($file);
 			}
 		}
 		print("$safeOldCount images deleted from source\n");
