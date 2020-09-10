@@ -6,7 +6,6 @@ use File::Find;
 use File::stat;
 use File::Path qw(make_path);
 use File::Copy;
-use File::Spec::Win32;
 use Image::ExifTool qw(:Public);
 use DateTime;
 use Win32::DriveInfo;
@@ -94,12 +93,6 @@ my $newestDT;
 my $exifTool = new Image::ExifTool;
 
 my $dotStr = "";
-
-sub is_folder_empty {
-	my $dirname = shift;
-	opendir(my $dh, $dirname) or die "Not a directory";
-	return scalar(grep { $_ ne "." && $_ ne ".." } readdir($dh)) == 0;
-}
 
 sub image_datetime {
 	my $filepath = $_[0];
@@ -341,8 +334,6 @@ foreach my $path (keys %potentiallyEmptyPathYes) {
 	# print("$path\n");
 	if (rmdir($path)) {
 		print("X $path\n");
-	} else { 
-		warn "Could not rmdir $path $!";
 	}
 }
 
